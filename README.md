@@ -4,9 +4,8 @@
 
 - Node.js (v18+)
 - npm or yarn
-- Docker & Docker Compose
-- Java 11+ (required for SonarQube)
-- sonar-scanner CLI
+- Docker
+
 
 ##  Installation
 
