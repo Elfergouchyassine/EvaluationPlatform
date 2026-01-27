@@ -12,6 +12,7 @@ export default function App() {
   const [output, setOutput] = useState("");
   const [eduContent, setEduContent] = useState([]);
   const [sonarResults, setSonarResults] = useState(null);
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
   // Énoncés des exercices
   const exercises = {
@@ -43,7 +44,7 @@ export default function App() {
     lines.forEach((line, index) => {
       const singleQuotes = (line.match(/'/g) || []).length;
       const doubleQuotes = (line.match(/"/g) || []).length;
-      
+
       if (singleQuotes % 2 !== 0 || doubleQuotes % 2 !== 0) {
         const from = code.split('\n').slice(0, index).join('\n').length + (index > 0 ? 1 : 0);
         diagnostics.push({
@@ -151,35 +152,35 @@ export default function App() {
   }
 
   async function analyzeSonarQube() {
-  try {
-    console.log("Envoi du code à SonarQube...");
-    
-    const response = await fetch("http://localhost:5000/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        code: value,
-        language: lang
-      })
-    });
+    try {
+      console.log("Envoi du code à SonarQube...");
+      console.log("API_URL:", API_URL);
 
-    const result = await response.json(); // try catch
-    console.log("Réponse SonarQube reçue:", result);
-    
-    setSonarResults(result);
+      const response = await fetch(`${API_URL}/analyze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: value,
+          language: lang
+        })
+      });
 
-    // Parser les issues
-    const diagnostics = parseSonarQubeReport(result);
-    console.log("Diagnostics parsés:", diagnostics);
-    
-    const contents = mapDiagnosticsToContent(diagnostics);
-    console.log("Contenus pédagogiques:", contents);
-    
-    setEduContent(contents);
-  } catch (err) {
-    console.error("Erreur SonarQube:", err);
+      const result = await response.json();
+      console.log("Réponse SonarQube reçue:", result);
+
+      setSonarResults(result);
+
+      const diagnostics = parseSonarQubeReport(result);
+      console.log("Diagnostics parsés:", diagnostics);
+
+      const contents = mapDiagnosticsToContent(diagnostics);
+      console.log("Contenus pédagogiques:", contents);
+
+      setEduContent(contents);
+    } catch (err) {
+      console.error("Erreur SonarQube:", err);
+    }
   }
-}
 
   const currentExercise = exercises[lang];
 
