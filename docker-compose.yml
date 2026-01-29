@@ -1,24 +1,37 @@
 services:
   # SonarQube - Code Quality Analysis
   sonarqube:
-    image: sonarqube:lts
-    container_name: sonarqube
+    image: sonarqube:lts-community
+    depends_on:
+      - sonar_db
+    environment:
+      SONAR_JDBC_URL: jdbc:postgresql://sonar_db:5432/sonar
+      SONAR_JDBC_USERNAME: sonar
+      SONAR_JDBC_PASSWORD: sonar
     ports:
-      - "9000:9000"  
+      - "9000:9000"
     volumes:
-      - sonar_data:/opt/sonarqube/data
-      - sonar_extensions:/opt/sonarqube/extensions
-      - sonar_logs:/opt/sonarqube/logs
-      - sonar_conf:/opt/sonarqube/conf
-      - ./sonar.properties:/opt/sonarqube/conf/sonar.properties:ro
+      - sonarqube_conf:/opt/sonarqube/conf
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+      - sonarqube_temp:/opt/sonarqube/temp
+    healthcheck:
+      disable: true
     networks:
       - app-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/api/system/status"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 40s
+
+  sonar_db:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: sonar
+      POSTGRES_PASSWORD: sonar
+      POSTGRES_DB: sonar
+    volumes:
+      - sonar_db_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+
 
   # Backend - Node.js Express Server
   backend:
@@ -27,7 +40,7 @@ services:
       dockerfile: Dockerfile
     container_name: backend
     ports:
-      - "5000:5000"
+      - "5001:5000"
     environment:
       - SONARQUBE_URL=http://sonarqube:9000  # 
       - SONARQUBE_TOKEN=${SONARQUBE_TOKEN}
@@ -36,9 +49,6 @@ services:
       - ./server/temp_code:/app/temp_code
     networks:
       - app-network
-    depends_on:
-      sonarqube:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 10s
@@ -61,10 +71,12 @@ services:
       - backend
 
 volumes:
-  sonar_data:
-  sonar_extensions:
-  sonar_logs:
-  sonar_conf:
+  sonarqube_conf:
+  sonarqube_data:
+  sonarqube_extensions:
+  sonarqube_logs:
+  sonarqube_temp:
+  sonar_db_data:
 
 networks:
   app-network:
