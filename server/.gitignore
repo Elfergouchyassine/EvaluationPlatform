@@ -1,0 +1,14 @@
+# Environment variables
+.env
+.env.local
+
+# Dependencies
+node_modules/
+package-lock.json
+
+# Temporary code files
+temp_code/
+
+# Logs
+*.log
+npm-debug.log*
