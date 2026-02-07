@@ -12,7 +12,7 @@ export default function App() {
   const [output, setOutput] = useState("");
   const [eduContent, setEduContent] = useState([]);
   const [sonarResults, setSonarResults] = useState(null);
-  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+  const API_URL = "http://localhost:5001";
 
   // Énoncés des exercices
   const exercises = {
