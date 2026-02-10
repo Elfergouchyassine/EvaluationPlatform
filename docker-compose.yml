@@ -40,7 +40,7 @@ services:
       dockerfile: Dockerfile
     container_name: backend
     ports:
-      - "5001:5000"
+      - "5000:5000"
     environment:
       - SONARQUBE_URL=http://sonarqube:9000  # 
       - SONARQUBE_TOKEN=${SONARQUBE_TOKEN}

@@ -5,6 +5,8 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
+import { execFile } from "child_process";
+import { promisify } from "util";
 
 dotenv.config();
 
@@ -19,6 +21,8 @@ const TEMP_DIR = path.join(__dirname, "temp_code");
 const SONARQUBE_URL = process.env.SONARQUBE_URL;
 const SONARQUBE_TOKEN = process.env.SONARQUBE_TOKEN;
 
+const execFileAsync = promisify(execFile);
+
 if (!SONARQUBE_TOKEN) {
   console.error("SONARQUBE_TOKEN non configuré dans .env");
   process.exit(1);
@@ -32,7 +36,7 @@ if (!fs.existsSync(TEMP_DIR)) {
 }
 
 /**
- * Endpoint : Analyser le code avec SonarQube API
+ * Endpoint : Analyser le code avec SonarQube
  */
 app.post("/analyze", async (req, res) => {
   const { code, language } = req.body;
@@ -58,18 +62,20 @@ app.post("/analyze", async (req, res) => {
     console.log("Création du projet dans SonarQube...");
     await createSonarQubeProject(projectKey);
 
-    // Uploader le fichier à SonarQube
-    console.log("Upload du code à SonarQube...");
-    await uploadCodeToSonarQube(projectKey, filePath, fileExtension);
+    // Lancer l'analyse via sonar-scanner
+    console.log("Analyse SonarQube via scanner...");
+    await runSonarScanner(projectKey, filePath, fileExtension);
 
     // Attendre que l'analyse soit terminée
     console.log("Attente de l'analyse...");
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    await new Promise((resolve) => setTimeout(resolve, 3000));
 
     // Récupérer les résultats
     console.log("Récupération des résultats...");
     const issues = await getSonarQubeIssues(projectKey);
+    const measures = await getSonarQubeMeasures(projectKey);
     console.log("Issues trouvées:", issues.length);
+    console.log("Mesures récupérées:", measures.length);
 
     // Nettoyer
     fs.unlinkSync(filePath);
@@ -78,19 +84,19 @@ app.post("/analyze", async (req, res) => {
       success: true,
       projectKey,
       issues: issues,
+      measures: measures,
       stats: {
         total: issues.length,
-        bugs: issues.filter(i => i.type === "BUG").length,
-        vulnerabilities: issues.filter(i => i.type === "VULNERABILITY").length,
-        codeSmells: issues.filter(i => i.type === "CODE_SMELL").length
-      }
+        bugs: issues.filter((i) => i.type === "BUG").length,
+        vulnerabilities: issues.filter((i) => i.type === "VULNERABILITY").length,
+        codeSmells: issues.filter((i) => i.type === "CODE_SMELL").length,
+      },
     });
-
   } catch (err) {
     console.error("Erreur:", err.message);
-    res.status(500).json({ 
-      success: false, 
-      error: err.message
+    res.status(500).json({
+      success: false,
+      error: err.message,
     });
   }
 });
@@ -106,8 +112,8 @@ async function createSonarQubeProject(projectKey) {
       {
         auth: {
           username: SONARQUBE_TOKEN,
-          password: ""
-        }
+          password: "",
+        },
       }
     );
     console.log("Projet créé:", projectKey);
@@ -121,28 +127,34 @@ async function createSonarQubeProject(projectKey) {
 }
 
 /**
- * Uploader le code à SonarQube
+ * Lancer l'analyse via sonar-scanner
  */
-async function uploadCodeToSonarQube(projectKey, filePath, fileExtension) {
+async function runSonarScanner(projectKey, filePath, fileExtension) {
+  const projectDir = fs.mkdtempSync(path.join(TEMP_DIR, "scan-"));
+  const srcDir = path.join(projectDir, "src");
+  fs.mkdirSync(srcDir, { recursive: true });
+
+  const destPath = path.join(srcDir, `code.${fileExtension}`);
+  fs.copyFileSync(filePath, destPath);
+
+  const args = [
+    `-Dsonar.projectKey=${projectKey}`,
+    `-Dsonar.sources=src`,
+    `-Dsonar.host.url=${SONARQUBE_URL}`,
+    `-Dsonar.login=${SONARQUBE_TOKEN}`,
+  ];
+
   try {
-    const code = fs.readFileSync(filePath, 'utf-8');
-    
-    // Envoyer le code via l'API SonarQube
-    await axios.post(
-      `${SONARQUBE_URL}/api/sources/raw?project=${projectKey}&file=${projectKey}:src/code.${fileExtension}`,
-      code,
-      {
-        headers: { "Content-Type": "text/plain" },
-        auth: {
-          username: SONARQUBE_TOKEN,
-          password: ""
-        }
-      }
-    );
-    console.log("Code uploadé à SonarQube");
+    const { stdout, stderr } = await execFileAsync("sonar-scanner", args, { cwd: projectDir });
+    console.log("sonar-scanner stdout:", stdout);
+    console.error("sonar-scanner stderr:", stderr);
   } catch (err) {
-    console.error("Erreur lors de l'upload:", err.message);
-    // Continuer quand même
+    console.error("sonar-scanner failed:", err);
+    if (err.stdout) console.log("sonar-scanner stdout:", err.stdout);
+    if (err.stderr) console.error("sonar-scanner stderr:", err.stderr);
+    throw err;
+  } finally {
+    fs.rmSync(projectDir, { recursive: true, force: true });
   }
 }
 
@@ -157,9 +169,9 @@ async function getSonarQubeIssues(projectKey) {
     const response = await axios.get(url, {
       auth: {
         username: SONARQUBE_TOKEN,
-        password: ""
+        password: "",
       },
-      timeout: 10000
+      timeout: 10000,
     });
 
     console.log("Réponse API:", response.data.issues?.length || 0, "issues");
@@ -171,13 +183,48 @@ async function getSonarQubeIssues(projectKey) {
 }
 
 /**
+ * Récupérer les mesures (dette technique, smells, etc.)
+ */
+async function getSonarQubeMeasures(projectKey) {
+  try {
+    const metricKeys = [
+      "sqale_index",
+      "sqale_rating",
+      "code_smells",
+      "bugs",
+      "vulnerabilities",
+      "reliability_rating",
+      "security_rating",
+      "sqale_debt_ratio",
+    ].join(",");
+
+    const url = `${SONARQUBE_URL}/api/measures/component?component=${projectKey}&metricKeys=${metricKeys}`;
+    console.log("Requête mesures API:", url);
+
+    const response = await axios.get(url, {
+      auth: {
+        username: SONARQUBE_TOKEN,
+        password: "",
+      },
+      timeout: 10000,
+    });
+
+    console.log("Mesures récupérées:", response.data?.component?.measures?.length || 0);
+    return response.data?.component?.measures || [];
+  } catch (err) {
+    console.error("Erreur mesures SonarQube:", err.message);
+    return [];
+  }
+}
+
+/**
  * Health check
  */
 app.get("/health", (req, res) => {
-  res.json({ 
-    status: "Backend actif", 
+  res.json({
+    status: "Backend actif",
     port: PORT,
-    sonarqube: SONARQUBE_URL
+    sonarqube: SONARQUBE_URL,
   });
 });
 
@@ -187,17 +234,17 @@ app.get("/health", (req, res) => {
 app.get("/sonarqube-status", async (req, res) => {
   try {
     const response = await axios.get(`${SONARQUBE_URL}/api/system/status`, {
-      timeout: 5000
+      timeout: 5000,
     });
     res.json({
       sonarqube: "connecté",
       status: response.data.status,
-      version: response.data.version
+      version: response.data.version,
     });
   } catch (err) {
     res.status(500).json({
       sonarqube: "déconnecté",
-      error: err.message
+      error: err.message,
     });
   }
 });
