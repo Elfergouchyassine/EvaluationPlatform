@@ -16,6 +16,7 @@ services:
       - sonarqube_extensions:/opt/sonarqube/extensions
       - sonarqube_logs:/opt/sonarqube/logs
       - sonarqube_temp:/opt/sonarqube/temp
+      - sonar_scanner_cache:/root/.sonar/cache
     healthcheck:
       disable: true
     networks:
@@ -40,7 +41,7 @@ services:
       dockerfile: Dockerfile
     container_name: backend
     ports:
-      - "5000:5000"
+      - "5001:5000"
     environment:
       - SONARQUBE_URL=http://sonarqube:9000  # 
       - SONARQUBE_TOKEN=${SONARQUBE_TOKEN}
@@ -50,7 +51,7 @@ services:
     networks:
       - app-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -64,7 +65,7 @@ services:
     ports:
       - "5173:5173"
     environment:
-      - VITE_API_URL=http://backend:5000  # 
+      - VITE_API_URL=http://backend:5001  # 
     networks:
       - app-network
     depends_on:
@@ -77,6 +78,7 @@ volumes:
   sonarqube_logs:
   sonarqube_temp:
   sonar_db_data:
+  sonar_scanner_cache:
 
 networks:
   app-network:
