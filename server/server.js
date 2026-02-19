@@ -50,7 +50,7 @@ app.post("/analyze", async (req, res) => {
 
   try {
     const fileExtension = language === "python" ? "py" : "js";
-    const projectKey = `local-project-${language}-${Date.now()}`;
+    const projectKey = `local-project-${language}`;
     const fileName = `code_${Date.now()}.${fileExtension}`;
     const filePath = path.join(TEMP_DIR, fileName);
 
@@ -130,7 +130,7 @@ async function createSonarQubeProject(projectKey) {
  * Lancer l'analyse via sonar-scanner
  */
 async function runSonarScanner(projectKey, filePath, fileExtension) {
-  const projectDir = fs.mkdtempSync(path.join(TEMP_DIR, "scan-"));
+  const projectDir = path.join(TEMP_DIR, `scan-${fileExtension}`);
   const srcDir = path.join(projectDir, "src");
   fs.mkdirSync(srcDir, { recursive: true });
 
@@ -142,6 +142,13 @@ async function runSonarScanner(projectKey, filePath, fileExtension) {
     `-Dsonar.sources=src`,
     `-Dsonar.host.url=${SONARQUBE_URL}`,
     `-Dsonar.login=${SONARQUBE_TOKEN}`,
+    `-Dsonar.working.directory=/root/.sonar/work`,
+    `-Dsonar.scanner.skipJreProvisioning=true`,
+    `-Dsonar.tests=`,
+    `-Dsonar.test.inclusions=`,
+    `-Dsonar.javascript.lcov.reportPaths=`,
+    `-Dsonar.python.coverage.reportPaths=`,
+    `-Dsonar.scm.disabled=true`
   ];
 
   try {
